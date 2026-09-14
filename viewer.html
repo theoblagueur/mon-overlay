@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Stream Overlay</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    width: 100vw; height: 100vh;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #setup {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #0f1117; color: #fff; text-align: center; padding: 20px;
+  }
+  #setup code {
+    background: #1a1d27; padding: 8px 16px; border-radius: 8px;
+    font-size: 26px; letter-spacing: 2px; display: inline-block; margin: 8px 0;
+  }
+  #setup .small { font-size: 14px; word-break: break-all; letter-spacing: normal; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .item {
+    max-width: 90vw; max-height: 90vh;
+    opacity: 0;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+    transform: scale(0.96);
+    border-radius: 10px;
+  }
+  .item.show { opacity: 1; transform: scale(1); }
+  #textOverlay {
+    font-size: 52px; font-weight: 700; color: white;
+    text-shadow: 0 0 12px black, 0 0 24px black;
+    text-align: center; max-width: 80vw;
+  }
+  #senderTag {
+    position: absolute; bottom: 16px; right: 24px;
+    color: white; font-size: 16px;
+    text-shadow: 0 0 6px black, 0 0 12px black;
+    opacity: 0; transition: opacity 0.4s ease;
+  }
+  #senderTag.show { opacity: 0.85; }
+</style>
+</head>
+<body>
+  <div id="setup"></div>
+  <div id="stage"></div>
+  <div id="senderTag"></div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  let room = params.get('room');
+  const imgDuration = parseInt(params.get('imgDuration') || '8000', 10);
+  const textDuration = parseInt(params.get('textDuration') || '6000', 10);
+  const videoMaxDuration = params.get('videoMaxDuration') ? parseInt(params.get('videoMaxDuration'), 10) : null;
+
+  function randCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
+  if (!room) room = randCode();
+
+  const setupDiv = document.getElementById('setup');
+  const stage = document.getElementById('stage');
+  const senderTag = document.getElementById('senderTag');
+
+  const peer = new Peer(room);
+
+  peer.on('open', id => {
+    const emitterUrl = location.href.replace(/viewer\.html.*$/, 'emitter.html') + '?room=' + id;
+    setupDiv.innerHTML =
+      '<h1>🎥 Overlay prêt</h1>' +
+      '<p>Code de la room :</p>' +
+      '<code>' + id + '</code>' +
+      '<p style="margin-top:24px;">Lien à envoyer à tes potes :</p>' +
+      '<code class="small">' + emitterUrl + '</code>' +
+      '<p style="margin-top:24px;opacity:0.6;font-size:13px;">Astuce : ajoute <b>?room=' + id + '</b> à l\'URL de cette page dans OBS pour garder toujours le même code d\'une session à l\'autre.</p>';
+  });
+
+  peer.on('error', err => {
+    setupDiv.innerHTML = '<h1>Erreur</h1><p>' + err.type + '</p>';
+  });
+
+  peer.on('connection', conn => {
+    conn.on('data', data => enqueue(data));
+  });
+
+  // ---- File d'attente ----
+  const queue = [];
+  let playing = false;
+
+  function enqueue(item) { queue.push(item); processQueue(); }
+  function processQueue() {
+    if (playing || queue.length === 0) return;
+    playing = true;
+    render(queue.shift(), () => { playing = false; processQueue(); });
+  }
+
+  function showSender(name) {
+    senderTag.textContent = name ? ('Envoyé par ' + name) : '';
+    senderTag.classList.toggle('show', !!name);
+  }
+
+  function finish(el, done) {
+    el.classList.remove('show');
+    setTimeout(() => { el.remove(); showSender(null); done(); }, 400);
+  }
+
+  function render(data, done) {
+    stage.innerHTML = '';
+    showSender(data.name);
+
+    if (data.type === 'text') {
+      const div = document.createElement('div');
+      div.id = 'textOverlay';
+      div.className = 'item';
+      div.textContent = data.text;
+      stage.appendChild(div);
+      requestAnimationFrame(() => div.classList.add('show'));
+      setTimeout(() => finish(div, done), textDuration);
+
+    } else if (data.type === 'image') {
+      const blob = new Blob([data.buffer], { type: data.mime });
+      const url = URL.createObjectURL(blob);
+      const img = document.createElement('img');
+      img.src = url;
+      img.className = 'item';
+      stage.appendChild(img);
+      requestAnimationFrame(() => img.classList.add('show'));
+      setTimeout(() => { URL.revokeObjectURL(url); finish(img, done); }, imgDuration);
+
+    } else if (data.type === 'video') {
+      const blob = new Blob([data.buffer], { type: data.mime });
+      const url = URL.createObjectURL(blob);
+      const vid = document.createElement('video');
+      vid.src = url;
+      vid.className = 'item';
+      vid.autoplay = true;
+      vid.playsInline = true;
+      stage.appendChild(vid);
+      requestAnimationFrame(() => vid.classList.add('show'));
+
+      let capTimer = null;
+      if (videoMaxDuration) {
+        capTimer = setTimeout(() => { URL.revokeObjectURL(url); finish(vid, done); }, videoMaxDuration);
+      }
+      vid.onended = () => {
+        if (capTimer) clearTimeout(capTimer);
+        URL.revokeObjectURL(url);
+        finish(vid, done);
+      };
+      vid.play().catch(() => {
+        // Si l'autoplay avec son est bloqué : on démarre muet puis on démute
+        vid.muted = true;
+        vid.play().then(() => setTimeout(() => { vid.muted = false; }, 150));
+      });
+    }
+  }
+</script>
+</body>
+</html>
