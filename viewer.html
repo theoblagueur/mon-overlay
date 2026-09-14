@@ -63,12 +63,20 @@
 <script>
   const params = new URLSearchParams(location.search);
   let room = params.get('room');
+
+  function randCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
+
+  if (!room) {
+    // Pas de ?room= dans l'URL : on réutilise le dernier code connu au lieu
+    // d'en générer un nouveau au hasard à chaque refresh.
+    room = localStorage.getItem('overlayRoomCode') || randCode();
+    console.warn('Aucun ?room= dans l\'URL — utilisation du dernier code connu :', room, '. Pense à ajouter ?room=' + room + ' à l\'URL dans OBS pour fixer ce code définitivement.');
+  }
+  localStorage.setItem('overlayRoomCode', room);
+
   const imgDuration = parseInt(params.get('imgDuration') || '8000', 10);
   const textDuration = parseInt(params.get('textDuration') || '6000', 10);
   const videoMaxDuration = params.get('videoMaxDuration') ? parseInt(params.get('videoMaxDuration'), 10) : null;
-
-  function randCode() { return Math.random().toString(36).substring(2, 8).toUpperCase(); }
-  if (!room) room = randCode();
 
   const setupDiv = document.getElementById('setup');
   const stage = document.getElementById('stage');
