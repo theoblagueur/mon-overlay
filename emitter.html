@@ -71,6 +71,10 @@
 
       <label for="file">Image ou vidéo</label>
       <input type="file" id="file" accept="image/*,video/*">
+
+      <label for="caption">Légende (optionnelle, affichée sous la photo/vidéo)</label>
+      <input type="text" id="caption" placeholder="Un petit mot...">
+
       <button id="sendFileBtn">Envoyer le fichier</button>
 
       <label for="text">Ou un message texte</label>
@@ -129,6 +133,7 @@
     if (!f) { alert('Choisis un fichier'); return; }
     if (!conn || !conn.open) { alert('Pas connecté'); return; }
     const isVideo = f.type.startsWith('video');
+    const caption = $('caption').value.trim();
     const reader = new FileReader();
     reader.onload = () => {
       conn.send({
@@ -136,10 +141,12 @@
         mime: f.type,
         filename: f.name,
         name: $('name').value.trim(),
+        caption: caption,
         buffer: reader.result
       });
       log('✔ Envoyé : ' + f.name);
       $('file').value = '';
+      $('caption').value = '';
     };
     reader.readAsArrayBuffer(f);
   };
