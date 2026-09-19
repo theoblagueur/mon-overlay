@@ -39,6 +39,23 @@
   }
   .fadeWrap.show { opacity: 1; transform: scale(1); }
   .item { max-width: 90vw; max-height: 80vh; border-radius: 10px; display: block; }
+  .senderHeader {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: -4px;
+  }
+  .senderAvatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 3px solid #57F287;
+    object-fit: cover;
+    box-shadow: 0 0 10px rgba(0,0,0,0.7);
+  }
+  .senderName {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 32px; font-weight: 900; color: white;
+    -webkit-text-stroke: 2px black;
+    text-shadow: 0 0 8px black, 0 0 16px black;
+    letter-spacing: 0.5px;
+  }
   #textOverlay {
     font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 68px; font-weight: 900; color: white;
@@ -54,20 +71,14 @@
     text-shadow: 0 0 10px black, 0 0 18px black, 0 3px 5px rgba(0,0,0,0.7);
     text-align: center; max-width: 85vw;
     line-height: 1.2;
+    position: relative; z-index: 2;
+    margin-top: -38px;
   }
-  #senderTag {
-    position: absolute; bottom: 16px; right: 24px;
-    color: white; font-size: 16px;
-    text-shadow: 0 0 6px black, 0 0 12px black;
-    opacity: 0; transition: opacity 0.4s ease;
-  }
-  #senderTag.show { opacity: 0.85; }
 </style>
 </head>
 <body>
   <div id="setup"></div>
   <div id="stage"></div>
-  <div id="senderTag"></div>
 
 <script>
   const params = new URLSearchParams(location.search);
@@ -89,7 +100,6 @@
 
   const setupDiv = document.getElementById('setup');
   const stage = document.getElementById('stage');
-  const senderTag = document.getElementById('senderTag');
 
   const peer = new Peer(room);
 
@@ -136,23 +146,33 @@
     render(queue.shift(), () => { playing = false; processQueue(); });
   }
 
-  function showSender(name) {
-    senderTag.textContent = name ? ('Envoyé par ' + name) : '';
-    senderTag.classList.toggle('show', !!name);
-  }
-
   function finish(el, done) {
     el.classList.remove('show');
-    setTimeout(() => { el.remove(); showSender(null); done(); }, 400);
+    setTimeout(() => { el.remove(); done(); }, 400);
   }
 
   function render(data, done) {
     stage.innerHTML = '';
-    showSender(data.name);
 
     const wrap = document.createElement('div');
     wrap.className = 'fadeWrap';
     stage.appendChild(wrap);
+
+    if (data.name) {
+      const header = document.createElement('div');
+      header.className = 'senderHeader';
+      if (data.avatar) {
+        const avatar = document.createElement('img');
+        avatar.className = 'senderAvatar';
+        avatar.src = data.avatar;
+        header.appendChild(avatar);
+      }
+      const nameEl = document.createElement('span');
+      nameEl.className = 'senderName';
+      nameEl.textContent = data.name;
+      header.appendChild(nameEl);
+      wrap.appendChild(header);
+    }
 
     function addCaptionIfAny() {
       if (data.caption) {
