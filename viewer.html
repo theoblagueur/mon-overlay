@@ -117,12 +117,15 @@
 
   peer.on('open', id => {
     const emitterUrl = location.href.replace(/viewer\.html.*$/, 'emitter.html') + '?room=' + id;
-    console.log('Overlay prêt — room:', id, '— lien pote:', emitterUrl);
+    const controlUrl = location.href.replace(/viewer\.html.*$/, 'control.html') + '?room=' + id;
+    console.log('Overlay prêt — room:', id, '— lien pote:', emitterUrl, '— panneau de contrôle:', controlUrl);
     flashSetup(
       '<h1>🎥 Overlay prêt</h1>' +
       '<p>Code de la room : <code>' + id + '</code></p>' +
       '<p>Lien à envoyer :</p>' +
-      '<code class="small">' + emitterUrl + '</code>'
+      '<code class="small">' + emitterUrl + '</code>' +
+      '<p>Panneau de contrôle (stop) :</p>' +
+      '<code class="small">' + controlUrl + '</code>'
     );
   });
 
@@ -135,18 +138,29 @@
 
   peer.on('connection', conn => {
     flashSetup('<h1>✅ Connecté</h1><p>Un pote vient de se connecter.</p>');
-    conn.on('data', data => enqueue(data));
+    conn.on('data', data => {
+      if (data.type === 'control') {
+        if (data.action === 'skip') skipCurrent();
+      } else {
+        enqueue(data);
+      }
+    });
   });
 
   // ---- File d'attente ----
   const queue = [];
   let playing = false;
+  let currentSkipHandler = null;
 
   function enqueue(item) { queue.push(item); processQueue(); }
   function processQueue() {
     if (playing || queue.length === 0) return;
     playing = true;
-    render(queue.shift(), () => { playing = false; processQueue(); });
+    render(queue.shift(), () => { playing = false; currentSkipHandler = null; processQueue(); });
+  }
+
+  function skipCurrent() {
+    if (currentSkipHandler) currentSkipHandler();
   }
 
   function finish(el, done) {
@@ -192,7 +206,16 @@
       div.textContent = data.text;
       wrap.appendChild(div);
       requestAnimationFrame(() => wrap.classList.add('show'));
-      setTimeout(() => finish(wrap, done), textDuration);
+
+      let closed = false;
+      const autoTimer = setTimeout(() => finishOnce(), textDuration);
+      function finishOnce() {
+        if (closed) return;
+        closed = true;
+        clearTimeout(autoTimer);
+        finish(wrap, done);
+      }
+      currentSkipHandler = finishOnce;
 
     } else if (data.type === 'image') {
       const blob = new Blob([data.buffer], { type: data.mime });
@@ -203,7 +226,17 @@
       wrap.appendChild(img);
       addCaptionIfAny();
       requestAnimationFrame(() => wrap.classList.add('show'));
-      setTimeout(() => { URL.revokeObjectURL(url); finish(wrap, done); }, imgDuration);
+
+      let closed = false;
+      const autoTimer = setTimeout(() => finishOnce(), imgDuration);
+      function finishOnce() {
+        if (closed) return;
+        closed = true;
+        clearTimeout(autoTimer);
+        URL.revokeObjectURL(url);
+        finish(wrap, done);
+      }
+      currentSkipHandler = finishOnce;
 
     } else if (data.type === 'video') {
       const blob = new Blob([data.buffer], { type: data.mime });
@@ -238,6 +271,7 @@
         capTimer = setTimeout(closeVideo, videoMaxDuration);
       }
       vid.onended = closeVideo;
+      currentSkipHandler = closeVideo;
       // Filet de sécurité : si la vidéo est corrompue / format non supporté /
       // échoue à se lire, on passe quand même à l'item suivant au lieu de bloquer.
       vid.onerror = () => { console.warn('Vidéo illisible, passage au suivant'); closeVideo(); };
