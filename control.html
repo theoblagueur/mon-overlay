@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Contrôle Overlay</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    background: #111318; color: white;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #status { position: fixed; top: 16px; left: 16px; font-size: 14px; opacity: 0.7; }
+  button {
+    font-size: 26px; font-weight: 800; padding: 34px 56px; border-radius: 18px;
+    border: none; cursor: pointer; background: #ef4444; color: white;
+    transition: transform 0.1s ease, background 0.15s ease;
+  }
+  button:active { transform: scale(0.94); background: #b91c1c; }
+  button.flash { background: #22c55e; }
+  #hint { font-size: 14px; opacity: 0.6; text-align: center; max-width: 380px; }
+</style>
+</head>
+<body>
+  <div id="status">Connexion...</div>
+  <button id="stopBtn">⏹ STOP le live-tchat en cours</button>
+  <div id="hint">Astuce : la touche - fait pareil, tant que cette fenêtre est active (garde-la ouverte à côté, sur un 2e écran par exemple).</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const room = params.get('room');
+  const statusEl = document.getElementById('status');
+  const btn = document.getElementById('stopBtn');
+
+  if (!room) {
+    statusEl.textContent = '❌ Ajoute ?room=TONCODE à l\'URL (le même que sur ton viewer.html)';
+    btn.disabled = true;
+  } else {
+    const peer = new Peer();
+    let conn = null;
+
+    function tryConnect() {
+      conn = peer.connect(room, { reliable: true });
+      conn.on('open', () => { statusEl.textContent = '✅ Connecté (room ' + room + ')'; });
+      conn.on('close', () => {
+        statusEl.textContent = '❌ Déconnecté, reconnexion...';
+        setTimeout(tryConnect, 3000);
+      });
+      conn.on('error', () => {});
+    }
+
+    peer.on('open', () => { statusEl.textContent = '⏳ Connexion à la room ' + room + '...'; tryConnect(); });
+    peer.on('error', err => { statusEl.textContent = '❌ Erreur : ' + err.type; });
+
+    function sendStop() {
+      if (conn && conn.open) {
+        conn.send({ type: 'control', action: 'skip' });
+        btn.classList.add('flash');
+        btn.textContent = '✅ Stop envoyé';
+        setTimeout(() => { btn.classList.remove('flash'); btn.textContent = '⏹ STOP le live-tchat en cours'; }, 500);
+      } else {
+        statusEl.textContent = '⚠️ Pas encore connecté à l\'overlay';
+      }
+    }
+
+    btn.addEventListener('click', sendStop);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === '-') { e.preventDefault(); sendStop(); }
+    });
+  }
+</script>
+</body>
+</html>
